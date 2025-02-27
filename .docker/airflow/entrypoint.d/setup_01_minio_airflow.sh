@@ -1,5 +1,8 @@
 #!/bin/bash
 
+#echo "Accès à MinIO avec la clé : $MINIO_ACCESS_KEY"
+#echo "Clé secrète MinIO : $MINIO_SECRET_ACCESS_KEY"
+
 # Vérifie si Airflow est accessible
 echo "🔍 Vérification d'Airflow..."
 airflow db check || { echo "❌ Airflow n'est pas accessible. Assure-toi qu'il est bien démarré."; exit 1; }
@@ -11,10 +14,10 @@ if ! airflow connections get minio_s3 > /dev/null 2>&1; then
     airflow connections add minio_s3 \
         --conn-type S3 \
         --conn-extra '{
-              "aws_access_key_id": "admin",
-              "aws_secret_access_key": "Admin@123",
+              "aws_access_key_id": "'"$MINIO_ACCESS_KEY"'",
+              "aws_secret_access_key": "'"$MINIO_SECRET_ACCESS_KEY"'",
               "endpoint_url": "http://cic-minio:9000",
-              "region_name": "us-east-1",
+              "region_name": "us-east-1"
           }'
 
 else

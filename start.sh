@@ -22,7 +22,7 @@ docker network ls | grep -q "cic-shared-network" || docker network create cic-sh
 
 # Fonction pour afficher l'usage du script
 usage() {
-    echo "Usage: $0 {start|stop|restart|status|logs|prune|list|help} [fichier/service]"
+    echo "Usage: $0 {start|stop|restart|status|logs|prune|list|rm|help} [fichier/service]"
     echo "  start [fichier/service]   - Démarrer un fichier compose ou un service spécifique sans arrêter les autres"
     echo "  stop [fichier/service]    - Arrêter un fichier compose ou un service spécifique"
     echo "  restart [fichier/service] - Redémarrer un fichier compose ou un service spécifique"
@@ -30,6 +30,7 @@ usage() {
     echo "  logs [service]            - Voir les logs des services en temps réel"
     echo "  prune                     - Supprimer les conteneurs, volumes et réseaux inutilisés"
     echo "  list                      - Lister les fichiers Docker Compose disponibles"
+    echo "  rm [fichier/service/all]  - Supprimer les volumes d'un fichier, d'un service ou tous les volumes"
     echo "  help                      - Afficher la liste des commandes disponibles"
     echo "\n📂 Alias des fichiers Docker Compose disponibles :"
     for key in "${!COMPOSE_FILES[@]}"; do
@@ -103,6 +104,22 @@ execute_action() {
     fi
 }
 
+# Supprimer les volumes
+delete_volumes() {
+    local target="$1"
+    if [ "$target" == "all" ]; then
+        echo "⚠️ Suppression de tous les volumes Docker..."
+        docker volume prune -f
+    elif [[ -n "${COMPOSE_FILES[$target]}" ]]; then
+        echo "⚠️ Suppression des volumes du fichier compose: ${COMPOSE_FILES[$target]}..."
+        docker compose -f ${COMPOSE_FILES[$target]} down -v
+    else
+        echo "⚠️ Suppression des volumes du service: $target..."
+        docker rm -v $(docker ps -a -q --filter "name=$target")
+    fi
+    echo "✅ Suppression terminée."
+}
+
 case "$1" in
     start|stop|restart)
         execute_action "$1" "$2"
@@ -132,6 +149,13 @@ case "$1" in
         for key in "${!COMPOSE_FILES[@]}"; do
             echo "  - $key : ${COMPOSE_FILES[$key]}"
         done
+        ;;
+
+    rm)
+        if [ -z "$2" ]; then
+            usage
+        fi
+        delete_volumes "$2"
         ;;
 
     help)
