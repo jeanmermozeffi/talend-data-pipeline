@@ -1,0 +1,91 @@
+services:
+  spark-master:
+    image: apache/spark:3.5.4
+    container_name: spark-master
+    command: "/opt/spark/bin/spark-class org.apache.spark.deploy.master.Master"
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    volumes:
+      - shared-workspace:/opt/spark/work
+      - ./conf/master:/opt/spark/conf
+    networks:
+      - spark-network
+
+  spark-worker-1:
+    image: apache/spark:3.5.4
+    container_name: spark-worker-1
+    command: "/opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_MEMORY=1G
+    ports:
+      - "8081:8081"
+    volumes:
+      - shared-workspace:/opt/spark/work
+      - ./conf/worker:/opt/spark/conf
+    networks:
+      - spark-network
+
+  spark-worker-2:
+    image: apache/spark:3.5.4
+    container_name: spark-worker-2
+    command: "/opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_MEMORY=1G
+    ports:
+      - "8082:8081"
+    volumes:
+      - shared-workspace:/opt/spark/work
+      - ./conf/worker:/opt/spark/conf
+    networks:
+      - spark-network
+
+  spark-history-server:
+    image: apache/spark:3.5.4
+    container_name: spark-history-server
+    command: "/opt/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer"
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - SPARK_HISTORY_OPTS=-Dspark.history.ui.port=18080 -Dspark.history.fs.logDirectory=/opt/spark/logs
+    ports:
+      - "18080:18080"
+    volumes:
+      - spark-logs:/opt/spark/logs
+      - ./conf/history:/opt/spark/conf
+    networks:
+      - spark-network
+
+  jupyter:
+    image: jupyter/pyspark-notebook:latest
+    container_name: jupyter
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_OPTS=--master=spark://spark-master:7077
+      - JUPYTER_ENABLE_LAB=yes
+    ports:
+      - "8888:8888"
+    volumes:
+      - shared-workspace:/home/jovyan/work
+    networks:
+      - spark-network
+
+volumes:
+  shared-workspace:
+  spark-logs:
+
+networks:
+  spark-network:
+    driver: bridge

@@ -1,0 +1,164 @@
+services:
+    cic-spark-master:
+#        image: apache/spark:${SPARK_STACK_VERSION}
+        build:
+            context: .
+            dockerfile: .docker/spark/Dockerfile
+            args:
+                SPARK_STACK_VERSION: ${SPARK_STACK_VERSION}
+        image: apache/spark-python11:${SPARK_STACK_VERSION}
+        container_name: ${PROJECT_NAME}-spark-master
+        hostname: ${PROJECT_NAME}-spark-master
+        entrypoint: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+        environment:
+            - SPARK_MASTER_HOST=${PROJECT_NAME}-spark-master
+            - SPARK_LOCAL_IP=${PROJECT_NAME}-spark-master
+        ports:
+            - "8090:8080"
+            - "7077:7077"
+        volumes:
+            - ${PROJECT_NAME}-spark-data:/opt/spark-data
+            - ./src/pyspark:/opt/spark-scripts
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-spark-worker-1:
+#        image: apache/spark:${SPARK_STACK_VERSION}
+        image: apache/spark-python11:${SPARK_STACK_VERSION}
+#        build:
+#            context: .
+#            dockerfile: .docker/spark/Dockerfile
+        container_name: ${PROJECT_NAME}-spark-worker-1
+        entrypoint: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://${PROJECT_NAME}-spark-master:7077"]
+        depends_on:
+            - cic-spark-master
+        environment:
+            - SPARK_WORKER_CORES=1
+            - SPARK_WORKER_MEMORY=4G
+            - SPARK_DRIVER_MEMORY=1G
+            - SPARK_EXECUTOR_MEMORY=1G
+            - PYSPARK_PYTHON=/opt/conda/bin/python3
+            - PYTHONPATH=/opt/conda/lib/python3.11/site-packages
+        volumes:
+            - ${PROJECT_NAME}-spark-data:/opt/spark-data
+            - ./src/pyspark:/opt/spark-scripts
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-spark-worker-2:
+#        image: apache/spark:${SPARK_STACK_VERSION}
+        image: apache/spark-python11:${SPARK_STACK_VERSION}
+#        build:
+#            context: .
+#            dockerfile: .docker/spark/Dockerfile
+        container_name: ${PROJECT_NAME}-spark-worker-2
+        entrypoint: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://${PROJECT_NAME}-spark-master:7077"]
+        depends_on:
+            - cic-spark-master
+        environment:
+            - SPARK_WORKER_CORES=1
+            - SPARK_WORKER_MEMORY=4G
+            - SPARK_DRIVER_MEMORY=1G
+            - SPARK_EXECUTOR_MEMORY=4G
+            - PYSPARK_PYTHON=/opt/conda/bin/python3  # Ajoutez cette ligne
+            - PYTHONPATH=/opt/conda/lib/python3.11/site-packages
+        volumes:
+            - ${PROJECT_NAME}-spark-data:/opt/spark-data
+            - ./src/pyspark:/opt/spark-scripts
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-spark-history-server:
+#        image: apache/spark:${SPARK_STACK_VERSION}
+        image: apache/spark-python11:${SPARK_STACK_VERSION}
+#        build:
+#            context: .
+#            dockerfile: .docker/spark/Dockerfile
+        container_name: ${PROJECT_NAME}-spark-history-server
+        entrypoint: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.history.HistoryServer"]
+        environment:
+            - SPARK_HISTORY_OPTS=-Dspark.history.fs.logDirectory=file:///tmp/spark-events
+        ports:
+            - "18080:18080"
+        volumes:
+            - ${PROJECT_NAME}-spark-history:/tmp/spark-events
+#            - spark-shared-volume:/opt/spark
+        depends_on:
+            - cic-spark-master
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-jupyter-notebook:
+        build:
+            context: .
+            dockerfile: .docker/notebook/Dockerfile
+#        image: jupyter/all-spark-notebook:latest
+        image: pyspark-jupyter-notebook-py3.11.11
+        container_name: ${PROJECT_NAME}-jupyter-notebook
+#        command: ["/bin/bash", "/start-notebook.sh"]
+        ports:
+            - "8888:8888"
+        environment:
+            - PYSPARK_MASTER=spark://${PROJECT_NAME}-spark-master:7077
+            - PYSPARK_PYTHON=/usr/bin/python3
+            - PYSPARK_DRIVER_PYTHON=jupyter
+            - PYSPARK_DRIVER_PYTHON_OPTS=notebook
+            - SPARK_HOME=/opt/conda/lib/python3.11/site-packages/pyspark
+            - PYSPARK_SUBMIT_ARGS=--master spark://${PROJECT_NAME}-spark-master:7077 pyspark-shell
+        volumes:
+            - ${PROJECT_NAME}-jupyter-data:/home/jovyan
+            - ./src/notebooks:/home/jovyan/work:rw
+            - ./.docker/notebook/start-notebook.sh:/start-notebook.sh
+        depends_on:
+            - cic-spark-master
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-minio:
+        image: minio/minio
+        container_name: ${PROJECT_NAME}-minio
+        ports:
+            - "9000:9000"
+            - "9001:9001"
+        environment:
+            - MINIO_ROOT_USER=admin
+            - MINIO_ROOT_PASSWORD=Admin@123
+        command: server /data --console-address ":9001"
+        volumes:
+            - ${PROJECT_NAME}-minio-data:/data
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-minio-create-bucket:
+        image: minio/mc
+        container_name: ${PROJECT_NAME}-minio-create-bucket
+        depends_on:
+            - cic-minio
+        entrypoint: >
+            /bin/sh -c "
+            sleep 5;
+            mc alias set myminio http://${PROJECT_NAME}-minio:9000 admin Admin@123;
+            mc mb myminio/spark-bucket || true;
+            mc anonymous set public myminio/spark-bucket;
+            exit 0;
+            "
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+
+networks:
+    cic-shared-network:
+        name: cic-shared-network
+        external: true
+
+volumes:
+    cic-spark-data:
+        name: cic-spark-data
+    cic-spark-history:
+        name: cic-spark-history
+    cic-jupyter-data:
+        name: cic-jupyter-data
+    cic-minio-data:
+        name: cic-minio-data
+    spark-shared-volume:
+        name: spark-shared-volume

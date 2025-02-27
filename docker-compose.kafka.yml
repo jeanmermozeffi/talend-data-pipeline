@@ -1,0 +1,144 @@
+services:
+    cic-zookeeper:
+        image: confluentinc/cp-zookeeper:latest
+        container_name: ${PROJECT_NAME}-zookeeper
+        restart: always
+        environment:
+            ZOOKEEPER_CLIENT_PORT: 2181
+            ZOOKEEPER_TICK_TIME: 2000
+        ports:
+            - "2181:2181"
+        volumes:
+            - ${PROJECT_NAME}-zookeeper-data:/var/lib/zookeeper
+            - ${PROJECT_NAME}-zookeeper-logs:/var/log/zookeeper
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-kafka-1:
+        image: confluentinc/cp-kafka:latest
+        container_name: ${KAFKA_BROKER_1}
+        restart: always
+        user: "root"
+        depends_on:
+            - ${PROJECT_NAME}-zookeeper
+        ports:
+            - "9092:9092"
+            - "9997:9997"
+        environment:
+            KAFKA_BROKER_ID: 1
+            KAFKA_ZOOKEEPER_CONNECT: "${PROJECT_NAME}-zookeeper:2181"
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,DOCKER:PLAINTEXT
+            KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+            KAFKA_LISTENERS: INTERNAL://${KAFKA_BROKER_1}:9092
+            KAFKA_ADVERTISED_LISTENERS: INTERNAL://${KAFKA_BROKER_1}:9092
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+            KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+            KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+            KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 3
+            KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 3
+            KAFKA_JMX_PORT: 9997
+            KAFKA_JMX_HOSTNAME: ${KAFKA_BROKER_1}
+        volumes:
+            - ${KAFKA_BROKER_1}-data:/var/lib/kafka/data
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-kafka-2:
+        image: confluentinc/cp-kafka:latest
+        container_name: ${KAFKA_BROKER_2}
+        restart: always
+        user: "root"
+        depends_on:
+            - ${PROJECT_NAME}-zookeeper
+        ports:
+            - "9093:9093"
+            - "9998:9998"
+        environment:
+            KAFKA_BROKER_ID: 2
+            KAFKA_ZOOKEEPER_CONNECT: "${PROJECT_NAME}-zookeeper:2181"
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,DOCKER:PLAINTEXT
+            KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+            KAFKA_LISTENERS: INTERNAL://${KAFKA_BROKER_2}:9093
+            KAFKA_ADVERTISED_LISTENERS: INTERNAL://${KAFKA_BROKER_2}:9093
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+            KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+            KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+            KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 3
+            KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 3
+            KAFKA_JMX_PORT: 9998
+            KAFKA_JMX_HOSTNAME: ${KAFKA_BROKER_2}
+        volumes:
+            - ${KAFKA_BROKER_2}-data:/var/lib/kafka/data
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-kafka-3:
+        image: confluentinc/cp-kafka:latest
+        container_name: ${KAFKA_BROKER_3}
+        restart: always
+        user: "root"
+        depends_on:
+            - ${PROJECT_NAME}-zookeeper
+        ports:
+            - "9094:9094"
+            - "9999:9999"
+        environment:
+            KAFKA_BROKER_ID: 3
+            KAFKA_ZOOKEEPER_CONNECT: "${PROJECT_NAME}-zookeeper:2181"
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,DOCKER:PLAINTEXT
+            KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+            KAFKA_LISTENERS: INTERNAL://${KAFKA_BROKER_3}:9094
+            KAFKA_ADVERTISED_LISTENERS: INTERNAL://${KAFKA_BROKER_3}:9094
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+            KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+            KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+            KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 3
+            KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 3
+            KAFKA_JMX_PORT: 9999
+            KAFKA_JMX_HOSTNAME: ${KAFKA_BROKER_3}
+        volumes:
+            - ${KAFKA_BROKER_3}-data:/var/lib/kafka/data
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-kafka-ui:
+        image: provectuslabs/kafka-ui:latest
+        container_name: ${PROJECT_NAME}-kafka-ui
+        restart: always
+        depends_on:
+            - ${KAFKA_BROKER_1}
+            - ${KAFKA_BROKER_2}
+            - ${KAFKA_BROKER_3}
+        ports:
+            - "8089:8080"
+        environment:
+            KAFKA_CLUSTERS_0_NAME: "local-cluster"
+            KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "${KAFKA_BROKER_1}:9092,${KAFKA_BROKER_2}:9093,${KAFKA_BROKER_3}:9094"
+            KAFKA_CLUSTERS_0_ZOOKEEPER: "${PROJECT_NAME}-zookeeper:2181"
+            KAFKA_SECURITY_ENABLED: true # Activer la sécurité
+            KAFKA_SECURITY_USERNAME: admin
+            KAFKA_SECURITY_PASSWORD: Admin123
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+networks:
+    cic-shared-network:
+        name: cic-shared-network
+        external: true
+
+volumes:
+    cic-zookeeper-data:
+        name: cic-zookeeper-data
+        driver: local
+    cic-zookeeper-logs:
+        name: cic-zookeeper-logs
+        driver: local
+    cic-kafka-1-data:
+        name: cic-kafka-1-data
+        driver: local
+    cic-kafka-2-data:
+        name: cic-kafka-2-data
+        driver: local
+    cic-kafka-3-data:
+        name: cic-kafka-3-data
+        driver: local

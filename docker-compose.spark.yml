@@ -1,0 +1,124 @@
+services:
+    cic-spark-master:
+        image: bitnami/spark:latest
+        container_name: ${PROJECT_NAME}-spark-master
+        hostname: ${PROJECT_NAME}-spark-master
+        environment:
+            - SPARK_MODE=master
+            - SPARK_RPC_AUTHENTICATION_ENABLED=no
+            - SPARK_RPC_ENCRYPTION_ENABLED=no
+            - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+            - SPARK_SSL_ENABLED=no
+        ports:
+            - "8090:8080"
+            - "7077:7077"
+        volumes:
+            - ${PROJECT_NAME}-spark-data:/bitnami
+            - ./src/pyspark:/opt/spark-scripts
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-spark-worker-1:
+        image: bitnami/spark:latest
+        container_name: ${PROJECT_NAME}-spark-worker-1
+        depends_on:
+            - ${PROJECT_NAME}-spark-master
+        environment:
+            - SPARK_LOCAL_IP=cic-spark-worker-1
+            - SPARK_WORKER_CORES=2
+            - SPARK_WORKER_MEMORY=4G
+            - SPARK_DRIVER_MEMORY=1G
+            - SPARK_EXECUTOR_MEMORY=2G
+            - SPARK_MODE=worker
+            - SPARK_MASTER_URL=spark://${PROJECT_NAME}-spark-master:7077
+            - SPARK_RPC_AUTHENTICATION_ENABLED=no
+            - SPARK_RPC_ENCRYPTION_ENABLED=no
+            - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+            - SPARK_SSL_ENABLED=no
+        volumes:
+            - ${PROJECT_NAME}-spark-data:/bitnami
+            - ./src/pyspark:/opt/spark-scripts
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-spark-worker-2:
+        image: bitnami/spark:latest
+        container_name: ${PROJECT_NAME}-spark-worker-2
+        depends_on:
+            - ${PROJECT_NAME}-spark-master
+        environment:
+            - SPARK_LOCAL_IP=cic-spark-worker-2
+            - SPARK_WORKER_CORES=2
+            - SPARK_WORKER_MEMORY=4G
+            - SPARK_DRIVER_MEMORY=1G
+            - SPARK_EXECUTOR_MEMORY=2G
+            - SPARK_MODE=worker
+            - SPARK_MASTER_URL=spark://${PROJECT_NAME}-spark-master:7077
+            - SPARK_RPC_AUTHENTICATION_ENABLED=no
+            - SPARK_RPC_ENCRYPTION_ENABLED=no
+            - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+            - SPARK_SSL_ENABLED=no
+        volumes:
+            - ${PROJECT_NAME}-spark-data:/bitnami
+            - ./src/pyspark:/opt/spark-scripts
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-spark-history-server:
+        image: bitnami/spark:latest
+        container_name: ${PROJECT_NAME}-spark-history-server
+        environment:
+            - SPARK_MODE=history-server
+            - SPARK_MASTER_URL=spark://${PROJECT_NAME}-spark-master:7077
+            - SPARK_HISTORY_OPTS=-Dspark.history.ui.port=18080 -Dspark.history.fs.logDirectory=/opt/spark/logs
+        ports:
+            - "18080:18080"
+        depends_on:
+            - ${PROJECT_NAME}-spark-master
+        volumes:
+            - ${PROJECT_NAME}-spark-history-logs:/opt/spark/logs
+            - ${PROJECT_NAME}-spark-data:/bitnami
+        command: bash -c "mkdir -p /opt/spark/logs && /opt/bitnami/scripts/spark/entrypoint.sh spark-class org.apache.spark.deploy.history.HistoryServer"
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-jupyter-notebook:
+        image: jupyter/pyspark-notebook:latest
+        container_name: ${PROJECT_NAME}-jupyter-notebook
+#        command: ["/bin/bash", "/start-notebook.sh"]
+        ports:
+            - "8888:8888"
+        environment:
+            - SPARK_MASTER=spark://${PROJECT_NAME}-spark-master:7077
+            - SPARK_OPTS=--master=spark://${PROJECT_NAME}-spark-master:7077
+            - PYSPARK_PYTHON=/usr/bin/python3
+            - PYSPARK_DRIVER_PYTHON=jupyter
+            - PYSPARK_DRIVER_PYTHON_OPTS=notebook
+            - SPARK_VERSION=3.5.4
+            - SPARK_HOME=/usr/local/spark
+        volumes:
+            - ${PROJECT_NAME}-jupyter-data:/home/jovyan
+            - ./src/notebooks:/home/jovyan/work:rw
+            - ./.docker/notebook/start-notebook.sh:/start-notebook.sh
+        depends_on:
+            - cic-spark-master
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+networks:
+    cic-shared-network:
+        name: cic-shared-network
+        external: true
+
+volumes:
+    cic-spark-data:
+        name: cic-spark-data
+    cic-spark-history-logs:
+        name: cic-spark-history-logs
+    cic-jupyter-data:
+        name: cic-jupyter-data
+    spark-shared-volume:
+        name: spark-shared-volume
+
+
+

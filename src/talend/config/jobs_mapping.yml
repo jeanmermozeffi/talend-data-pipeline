@@ -1,0 +1,4 @@
+jobs:
+  jAlimentationBDD: "/opt/src/talend/jobs/jAlimentationBDD/jAlimentationBDD_run.sh"
+  jExportData: "/opt/src/talend/jobs/jExportData/jExportData_run.sh"
+  jImportData: "/opt/src/talend/jobs/jImportData/jImportData_run.sh"

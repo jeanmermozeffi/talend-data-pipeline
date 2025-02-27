@@ -1,0 +1,20 @@
+{
+  "name": "debezium-postgres-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "cic-postgres",
+    "database.port": "5432",
+    "database.user": "admin",
+    "database.password": "admin",
+    "database.dbname": "adventureworks",
+    "database.server.name": "postgres-db",
+    "database.history.kafka.bootstrap.servers": "cic-kafka-1:9092,cic-kafka-2:9093,cic-kafka-3:9094",
+    "database.history.kafka.topic": "schema-changes.adventureworks",
+    "plugin.name": "pgoutput",
+    "slot.name": "debezium_slot",
+    "publication.name": "debezium_publication",
+    "topic.prefix": "cic",
+    "table.include.list": "public.users",
+    "table.exclude.list": "public.logs, public.old_data"
+  }
+}

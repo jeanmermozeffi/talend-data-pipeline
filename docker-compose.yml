@@ -1,0 +1,140 @@
+x-airflow-common:
+  &airflow-common
+    image: apache/airflow:2.7.0
+    restart: always
+    environment:
+      &airflow-env
+        AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+        AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+        AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres:5432/airflow
+        AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+        AIRFLOW__CORE__REMOTE_LOGGING: True
+        AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID: minio_conn
+        AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER: s3://airflow-logs
+        AIRFLOW__LOGGING__ENCRYPT_S3_LOGS: False
+    volumes:
+        - ./dags:/opt/airflow/dags
+        - ./logs:/opt/airflow/logs
+    depends_on:
+        - postgres
+        - redis
+        - minio
+
+services:
+    cic-data-source-postgres:
+        image: postgres:latest
+        container_name: ${PROJECT_NAME}-data-source-postgres
+        restart: always
+        environment:
+            POSTGRES_DB: COM_INGESTION_DB
+            POSTGRES_USER: Admin
+            POSTGRES_PASSWORD: Admin123
+        command: [ "postgres", "-c", "wal_level=logical" ]
+        volumes:
+            - ./.docker/postgres/datasource/init.sql:/docker-entrypoint-initdb.d/init.sql
+            - ${PROJECT_NAME}-db-data-source:/var/lib/postgresql/data
+        ports:
+            - "5434:5432"
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+#    cic-postgres:
+#        build:
+#            context: .
+#            dockerfile: .docker/postgres/Dockerfile
+#        image: postgres_adventure_works
+#        container_name: ${PROJECT_NAME}-postgres
+#        restart: always
+#        environment:
+#            POSTGRES_DB: adventureworks
+#            POSTGRES_USER: admin
+#            POSTGRES_PASSWORD: admin
+#        command: [ "postgres", "-c", "wal_level=logical" ]
+#        volumes:
+#            - ./.docker/postgres/adventureworks/install.sql:/docker-entrypoint-initdb.d/install.sql
+#            - ${PROJECT_NAME}-db-data:/var/lib/postgresql/data
+#        ports:
+#            - "5432:5432"
+#        networks:
+#            - ${PROJECT_NAME}-shared-network
+
+    cic-connect:
+        image: debezium/connect:2.7.3.Final
+        container_name: ${PROJECT_NAME}-connect
+        restart: always
+        ports:
+            - "8083:8083"
+        environment:
+            BOOTSTRAP_SERVERS: "${KAFKA_BROKER_1}:9092,${KAFKA_BROKER_1}:9093,${KAFKA_BROKER_1}:9094"
+            GROUP_ID: "1"
+            CONFIG_STORAGE_TOPIC: "connect-configs"
+            OFFSET_STORAGE_TOPIC: "connect-offsets"
+            STATUS_STORAGE_TOPIC: "connect-status"
+            KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+            VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+            CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+            CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+            CONNECT_REST_ADVERTISED_HOST_NAME: "connect"
+            CONNECT_PLUGIN_PATH: "/kafka/connect"
+            ONNECT_LOG4J_ROOT_LOGLEVEL: "INFO"
+        depends_on:
+#            - ${KAFKA_BROKER_1}
+#            - ${KAFKA_BROKER_2}
+#            - ${KAFKA_BROKER_3}
+            - ${PROJECT_NAME}-data-source-postgres
+        networks:
+            - ${PROJECT_NAME}-shared-network
+        volumes:
+            - ${PROJECT_NAME}-connect-data:/kafka/connect
+            - ${PROJECT_NAME}-connect-logs:/kafka/logs
+
+    cic-minio:
+        image: minio/minio
+        container_name: ${PROJECT_NAME}-minio
+        ports:
+            - "9000:9000"
+            - "9001:9001"
+        environment:
+            - MINIO_ROOT_USER=admin
+            - MINIO_ROOT_PASSWORD=Admin@123
+        command: server /data --console-address ":9001"
+        volumes:
+            - ${PROJECT_NAME}-minio-data:/data
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-minio-init:
+        image: minio/mc
+        container_name: ${PROJECT_NAME}-minio-init
+        depends_on:
+            - ${PROJECT_NAME}-minio
+        volumes:
+            - ./.docker/minio/init-minio.sh:/init-minio.sh
+        entrypoint: [ "/bin/sh", "/init-minio.sh" ]
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+networks:
+    cic-shared-network:
+        name: cic-shared-network
+        external: true
+
+volumes:
+#    cic-db-data:
+#        name: cic-db-data
+    cic-connect-data:
+        name: cic-connect-data
+    cic-connect-logs:
+        name: cic-connect-logs
+    cic-db-data-source:
+        name: cic-db-data-source
+    cic-minio-data:
+        name: cic-minio-data
+
+
+
+# spark-shell --conf spark.hadoop.fs.s3a.endpoint=http://cic-minio:9000 \
+#    --conf spark.hadoop.fs.s3a.access.key=admin \
+#    --conf spark.hadoop.fs.s3a.secret.key=Admin@123 \
+#    --conf spark.hadoop.fs.s3a.path.style.access=true \
+#    --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem

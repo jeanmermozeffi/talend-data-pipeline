@@ -1,0 +1,221 @@
+services:
+    # Service PostgreSQL pour stocker les métadonnées d'Airflow
+    cic-postgres-airflow:
+        image: postgres:latest
+        container_name: ${PROJECT_NAME}_airflow_postgres
+        restart: always
+        environment:
+            POSTGRES_USER: airflow
+            POSTGRES_PASSWORD: airflow
+            POSTGRES_DB: airflow
+        ports:
+            - "5433:5432"
+        volumes:
+            - ${PROJECT_NAME}-db-airflow-data:/var/lib/postgresql/data
+        healthcheck:
+            test: [ "CMD", "pg_isready", "-U", "airflow" ]
+            interval: 10s
+            retries: 5
+            start_period: 5s
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    # Service Redis pour la gestion des files de tâches de Celery
+    cic-redis:
+        image: redis:latest
+        container_name: ${PROJECT_NAME}_airflow_redis
+        restart: always
+        ports:
+            - "6379:6379"
+        healthcheck:
+            test: [ "CMD", "redis-cli", "ping" ]
+            interval: 10s
+            retries: 5
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    # Initialisation de la base de données Airflow
+    cic-airflow-init:
+        image: apache/airflow:${AIRFLOW_VERSION}
+        container_name: ${PROJECT_NAME}_airflow_init
+        depends_on:
+            cic-postgres-airflow:
+                condition: service_healthy
+        environment:
+            AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+            AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@cic-postgres-airflow:5432/airflow
+            AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@cic-postgres-airflow:5432/airflow
+            AIRFLOW__CELERY__BROKER_URL: redis://cic-redis:6379/0
+        entrypoint: [ "airflow", "db", "init" ]
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    # Service Web UI Airflow
+    cic-airflow-webserver:
+        image: apache/airflow:${AIRFLOW_VERSION}
+        container_name: ${PROJECT_NAME}_airflow_webserver
+        restart: always
+        depends_on:
+            cic-airflow-init:
+                condition: service_completed_successfully
+#            cic-redis:
+#                condition: service_healthy
+        environment:
+            AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+            AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@cic-postgres-airflow:5432/airflow
+            AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@cic-postgres-airflow:5432/airflow
+            AIRFLOW__CELERY__BROKER_URL: redis://cic-redis:6379/0
+            AIRFLOW__LOGGING__REMOTE_LOGGING: True
+            AIRFLOW__LOGGING__ENCRYPT_S3_LOGS: False
+            AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID: minio_s3
+            AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER: s3://airflow-logs-bucket
+            AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS: '{"visibility_timeout": 3600}'
+        ports:
+            - "8082:8080"
+        volumes:
+            - ./src/airflow/dags:/opt/airflow/dags
+            - ./src/talend:/opt/src/talend
+#            - ${PROJECT_NAME}-airflow-logs:/opt/airflow/logs
+            - ./.docker/airflow/entrypoint.d:/entrypoint.d
+            - ./.docker/airflow/entrypoint.sh:/entrypoint.sh
+            - ./.docker/requirements.txt:/opt/airflow/requirements.txt
+        entrypoint: [ "/bin/bash", "/entrypoint.sh" ]
+        healthcheck:
+            test: [ "CMD-SHELL", "airflow db check" ]
+            interval: 10s
+            retries: 5
+            start_period: 30s
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    # Planificateur de tâches Airflow
+    cic-airflow-scheduler:
+        image: apache/airflow:${AIRFLOW_VERSION}
+        container_name: ${PROJECT_NAME}_airflow_scheduler
+        restart: always
+        depends_on:
+            cic-airflow-init:
+                condition: service_completed_successfully
+#            cic-airflow-webserver:
+#                condition: service_healthy
+#            cic-airflow-worker:
+#                condition: service_healthy
+#            cic-redis:
+#                condition: service_healthy
+        environment:
+            AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+            AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@cic-postgres-airflow:5432/airflow
+            AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@cic-postgres-airflow:5432/airflow
+            AIRFLOW__CELERY__BROKER_URL: redis://cic-redis:6379/0
+            AIRFLOW__LOGGING__REMOTE_LOGGING: True
+            AIRFLOW__LOGGING__ENCRYPT_S3_LOGS: False
+            AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID: minio_s3
+            AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER: s3://airflow-logs-bucket
+            AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS: '{"visibility_timeout": 3600}'
+        volumes:
+            - ./src/airflow/dags:/opt/airflow/dags
+            - ./src/talend:/opt/src/talend
+#            - ${PROJECT_NAME}-airflow-logs:/opt/airflow/logs
+        command: [ "airflow", "scheduler" ]
+        healthcheck:
+            test: [ "CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname $(hostname)" ]
+            interval: 10s
+            retries: 5
+            start_period: 30s
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    # Worker Celery pour exécuter les tâches en parallèle
+    cic-airflow-worker:
+        image: apache/airflow:${AIRFLOW_VERSION}
+        container_name: ${PROJECT_NAME}_airflow_worker
+        restart: always
+        depends_on:
+            cic-airflow-init:
+                condition: service_completed_successfully
+#            cic-redis:
+#                condition: service_healthy
+        environment:
+            AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+            AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@cic-postgres-airflow:5432/airflow
+            AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@cic-postgres-airflow:5432/airflow
+            AIRFLOW__CELERY__BROKER_URL: redis://cic-redis:6379/0
+            AIRFLOW__LOGGING__REMOTE_LOGGING: True
+            AIRFLOW__LOGGING__ENCRYPT_S3_LOGS: False
+            AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID: minio_s3
+            AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER: s3://airflow-logs-bucket
+            AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS: '{"visibility_timeout": 3600}'
+        volumes:
+            - ./src/airflow/dags:/opt/airflow/dags
+            - ./src/talend:/opt/src/talend
+#            - ${PROJECT_NAME}-airflow-logs:/opt/airflow/logs
+        command: [ "airflow", "celery", "worker" ]
+        healthcheck:
+            test: [ "CMD-SHELL", "airflow celery status" ]
+            interval: 10s
+            retries: 5
+            start_period: 30s
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+    cic-airflow-triggerer:
+        image: apache/airflow:${AIRFLOW_VERSION}
+        container_name: ${PROJECT_NAME}_airflow_triggerer
+        restart: always
+        depends_on:
+            cic-airflow-init:
+                condition: service_completed_successfully
+        environment:
+            AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+            AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@cic-postgres-airflow:5432/airflow
+            AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@cic-postgres-airflow:5432/airflow
+            AIRFLOW__CELERY__BROKER_URL: redis://cic-redis:6379/0
+            AIRFLOW__LOGGING__REMOTE_LOGGING: True
+            AIRFLOW__LOGGING__ENCRYPT_S3_LOGS: False
+            AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID: minio_s3
+            AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER: s3://airflow-logs-bucket
+            AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS: '{"visibility_timeout": 3600}'
+        volumes:
+            - ./src/airflow/dags:/opt/airflow/dags
+#            - ${PROJECT_NAME}-airflow-logs:/opt/airflow/logs
+        command: [ "airflow", "triggerer" ]
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+
+    # Airflow CLI pour exécuter des commandes
+    cic-airflow-cli:
+        image: apache/airflow:${AIRFLOW_VERSION}
+        container_name: ${PROJECT_NAME}_airflow_cli
+        depends_on:
+            cic-airflow-webserver:
+                condition: service_healthy
+        environment:
+            AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@cic-postgres-airflow:5432/airflow
+            AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@cic-postgres-airflow:5432/airflow
+            AIRFLOW__CELERY__BROKER_URL: redis://cic-redis:6379/0
+            AIRFLOW__LOGGING__REMOTE_LOGGING: True
+            AIRFLOW__LOGGING__ENCRYPT_S3_LOGS: False
+            AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID: minio_s3
+            AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER: s3://airflow-logs-bucket
+            AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS: '{"visibility_timeout": 3600}'
+        entrypoint: [ "/bin/bash" ]
+        stdin_open: true
+        tty: true
+        volumes:
+            - ./src/airflow/dags:/opt/airflow/dags
+#            - ${PROJECT_NAME}-airflow-logs:/opt/airflow/logs
+        networks:
+            - ${PROJECT_NAME}-shared-network
+
+networks:
+    cic-shared-network:
+        name: cic-shared-network
+        external: true
+
+volumes:
+    # Volume data Apache Airflow
+    cic-db-airflow-data:
+        name: cic-db-airflow-data
+#    cic-airflow-logs:
+#        name: cic-airflow-logs
