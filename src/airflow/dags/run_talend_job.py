@@ -13,11 +13,8 @@ sys.path.append("/opt/src")
 
 from talend.config.load_jobs import get_job_path
 
-job_key = "jAlimentationBDD"
+job_key = "jChargeDWH"
 DAG_START_DATE = datetime(2024, 2, 26)
-# Définition des connexions aux bases de données
-DATA_SOURCE_CONN = "postgresql://user:password@host_source:5432/database_source"
-DWH_CONN = "postgresql://user:password@host_dwh:5432/dwh_database"
 
 # Configuration du DAG
 default_args = {
@@ -58,5 +55,5 @@ send_failure_email = get_failure_email_operator(dag)
 check_connections
 
 # Définition de l'ordre des tâches
-# check_connections >> run_talend_job
+check_connections >> run_talend_job
 check_connections.on_failure_callback = lambda context: send_failure_email.execute(context)

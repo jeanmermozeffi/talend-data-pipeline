@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 
-DATA_SOURCE_CONN = "postgresql://Admin:Admin123@localhost:5432/COM_INGESTION_DB"
-DWH_CONN = "postgresql://Admin:Admin123@localhost:5432/COM_INGESTION_DB"
+DATA_SOURCE_CONN = "postgresql://Admin:Admin123@cic-data-source-postgres:5432/COM_INGESTION_DB"
+DWH_CONN = "postgresql://Admin:Admin123@cic-data-source-postgres:5432/COM_INGESTION_DB"
 
 def check_db_connection(conn_str):
     """ Vérifie la connexion à une base de données """

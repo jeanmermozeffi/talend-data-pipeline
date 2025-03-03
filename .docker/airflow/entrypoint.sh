@@ -1,7 +1,9 @@
 #!/bin/bash
 
+apt-get update -y && apt-get install -y default-jdk
 pip install --no-cache-dir -r /opt/airflow/requirements.txt
 pip install --upgrade azure
+
 # shellcheck disable=SC2093
 exec "$@"
 
